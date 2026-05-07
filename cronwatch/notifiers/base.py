@@ -1,4 +1,5 @@
-"""Base notifier interface for cronwatch alert delivery."""
+"""Base classes and shared data types for cronwatch notifiers."""
+from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -8,29 +9,28 @@ from typing import Optional
 
 @dataclass
 class AlertPayload:
-    """Structured alert message sent to notifiers."""
+    """Carries all context needed to compose an alert message."""
 
     job_name: str
-    reason: str  # 'missed_schedule' | 'failure_threshold' | 'never_ran'
+    reason: str
     last_seen: Optional[datetime]
-    consecutive_failures: int
-    cron_expression: str
-    timestamp: datetime
+    exit_code: Optional[int] = None
 
     def summary(self) -> str:
-        last = self.last_seen.isoformat() if self.last_seen else "never"
-        return (
-            f"[cronwatch] ALERT for job '{self.job_name}': {self.reason} | "
-            f"last_seen={last} | failures={self.consecutive_failures} | "
-            f"cron='{self.cron_expression}'"
-        )
+        """Return a human-readable one-line summary of the alert."""
+        ts = self.last_seen.isoformat() if self.last_seen else "never"
+        parts = [
+            f"Job '{self.job_name}' alert: {self.reason}.",
+            f"Last seen: {ts}.",
+        ]
+        if self.exit_code is not None:
+            parts.append(f"Exit code: {self.exit_code}.")
+        return " ".join(parts)
 
 
 class BaseNotifier(ABC):
-    """Abstract base class that all notifier backends must implement."""
+    """Abstract base class for all notifiers."""
 
     @abstractmethod
     def send(self, payload: AlertPayload) -> None:
-        """Deliver an alert.  Implementations should not raise on transient errors;
-        they should log and swallow them so other notifiers still run."""
-        ...
+        """Dispatch an alert.  Implementations must not raise on delivery failure."""
