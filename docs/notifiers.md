@@ -1,40 +1,54 @@
-# Cronwatch Notifiers
+# Notifiers
 
-Cronwatch ships with several built-in notifiers. Each implements `BaseNotifier`
-and can be passed to `CronChecker`.
+Cronwatch ships with several built-in notifiers. Each notifier implements
+`BaseNotifier.send(payload: AlertPayload)` and can be passed to `CronChecker`.
 
-## Available Notifiers
+## Built-in notifiers
 
-| Notifier | Class | Config |
+| Notifier | Module | Extra dependency |
 |---|---|---|
-| Log (stdout) | `LogNotifier` | — |
-| Webhook | `WebhookNotifier` | — |
-| Email (SMTP) | `EmailNotifier` | `EmailConfig` |
-| Slack | `SlackNotifier` | `SlackConfig` |
-| PagerDuty | `PagerDutyNotifier` | `PagerDutyConfig` |
-| OpsGenie | `OpsGenieNotifier` | `OpsGenieConfig` |
-| VictorOps | `VictorOpsNotifier` | `VictorOpsConfig` |
+| `LogNotifier` | `cronwatch.notifiers.log_notifier` | — |
+| `WebhookNotifier` | `cronwatch.notifiers.webhook_notifier` | `requests` |
+| `EmailNotifier` | `cronwatch.notifiers.email_notifier` | — |
+| `SlackNotifier` | `cronwatch.notifiers.slack_notifier` | `requests` |
+| `PagerDutyNotifier` | `cronwatch.notifiers.pagerduty_notifier` | `requests` |
+| `OpsGenieNotifier` | `cronwatch.notifiers.opsgenie_notifier` | `requests` |
+| `VictorOpsNotifier` | `cronwatch.notifiers.victorops_notifier` | `requests` |
+| `SNSNotifier` | `cronwatch.notifiers.sns_notifier` | `boto3` |
 
-## VictorOps (Splunk On-Call)
+## SNSNotifier
 
-Uses the VictorOps **REST Endpoint** integration.
+Publishes alerts to an **AWS SNS topic** as a JSON message.
 
 ```python
-from cronwatch.notifiers import VictorOpsConfig, VictorOpsNotifier
+from cronwatch.notifiers.sns_notifier import SNSConfig, SNSNotifier
 
-config = VictorOpsConfig(
-    routing_key="db-team",
-    rest_endpoint="https://alert.victorops.com/integrations/generic/<ID>/alert",
-    timeout=10,
-    extra_fields={"env": "production"},
+config = SNSConfig(
+    topic_arn="arn:aws:sns:us-east-1:123456789012:cronwatch-alerts",
+    region_name="us-east-1",
+    # Omit keys to use the default boto3 credential chain (env vars, IAM role, etc.)
+    aws_access_key_id="AKIA...",
+    aws_secret_access_key="...",
+    subject_prefix="[cronwatch]",  # optional
 )
-notifier = VictorOpsNotifier(config)
+
+notifier = SNSNotifier(config)
 ```
 
-The `routing_key` is appended to the `rest_endpoint` URL automatically.
-Optional `extra_fields` are merged into the alert body.
+The SNS message body is a JSON object with the following fields:
 
-## Writing a Custom Notifier
+```json
+{
+  "job_name": "nightly-backup",
+  "reason": "missed schedule",
+  "summary": "[cronwatch] nightly-backup – missed schedule",
+  "last_seen": "2024-01-10T02:00:00+00:00"
+}
+```
+
+`exit_code` is included when the job exited with a non-zero status.
+
+## Writing a custom notifier
 
 Subclass `BaseNotifier` and implement `send`:
 
@@ -49,8 +63,5 @@ class MyNotifier(BaseNotifier):
 Pass an instance to `CronChecker`:
 
 ```python
-from cronwatch.checker import CronChecker
-
 checker = CronChecker(registry, notifiers=[MyNotifier()])
-checker.check_all()
 ```
