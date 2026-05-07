@@ -1,56 +1,56 @@
 # Cronwatch Notifiers
 
-Cronwatch ships with several built-in notifiers. Each notifier implements
-`BaseNotifier.send(payload: AlertPayload)` and must never raise on delivery
-failure — errors are logged instead.
+Cronwatch ships with several built-in notifiers. Each implements `BaseNotifier`
+and can be passed to `CronChecker`.
 
 ## Available Notifiers
 
-| Notifier | Class | Config dataclass |
+| Notifier | Class | Config |
 |---|---|---|
-| Structured log | `LogNotifier` | *(none)* |
-| Generic webhook | `WebhookNotifier` | `WebhookNotifier(url, ...)` |
+| Log (stdout) | `LogNotifier` | — |
+| Webhook | `WebhookNotifier` | — |
 | Email (SMTP) | `EmailNotifier` | `EmailConfig` |
 | Slack | `SlackNotifier` | `SlackConfig` |
 | PagerDuty | `PagerDutyNotifier` | `PagerDutyConfig` |
 | OpsGenie | `OpsGenieNotifier` | `OpsGenieConfig` |
+| VictorOps | `VictorOpsNotifier` | `VictorOpsConfig` |
 
-## OpsGenie
+## VictorOps (Splunk On-Call)
+
+Uses the VictorOps **REST Endpoint** integration.
 
 ```python
-from cronwatch.notifiers.opsgenie_notifier import OpsGenieConfig, OpsGenieNotifier
+from cronwatch.notifiers import VictorOpsConfig, VictorOpsNotifier
 
-config = OpsGenieConfig(
-    api_key="YOUR_OPSGENIE_API_KEY",
-    responders=[{"type": "team", "name": "platform-ops"}],
-    tags=["cron", "production"],
-    priority="P2",   # P1 (critical) – P5 (informational)
+config = VictorOpsConfig(
+    routing_key="db-team",
+    rest_endpoint="https://alert.victorops.com/integrations/generic/<ID>/alert",
+    timeout=10,
+    extra_fields={"env": "production"},
 )
-notifier = OpsGenieNotifier(config)
+notifier = VictorOpsNotifier(config)
 ```
 
-Alerts are sent to `https://api.opsgenie.com/v2/alerts`. The alert `alias` is
-set to `cronwatch-<job_name>` so repeated firings de-duplicate in OpsGenie.
+The `routing_key` is appended to the `rest_endpoint` URL automatically.
+Optional `extra_fields` are merged into the alert body.
 
-### OpsGenieConfig fields
+## Writing a Custom Notifier
 
-| Field | Type | Default | Description |
-|---|---|---|---|
-| `api_key` | `str` | *required* | OpsGenie API integration key |
-| `responders` | `list[dict]` | `[]` | Teams / users to notify |
-| `tags` | `list[str]` | `[]` | Tags attached to the alert |
-| `priority` | `str` | `"P3"` | OpsGenie priority (P1–P5) |
-| `timeout` | `int` | `10` | HTTP request timeout in seconds |
-
-## Adding a custom notifier
+Subclass `BaseNotifier` and implement `send`:
 
 ```python
 from cronwatch.notifiers.base import AlertPayload, BaseNotifier
 
 class MyNotifier(BaseNotifier):
     def send(self, payload: AlertPayload) -> None:
-        # deliver the alert; catch all exceptions internally
-        ...
+        print(payload.summary())
 ```
 
-Register it with `CronChecker` by appending to its `notifiers` list.
+Pass an instance to `CronChecker`:
+
+```python
+from cronwatch.checker import CronChecker
+
+checker = CronChecker(registry, notifiers=[MyNotifier()])
+checker.check_all()
+```
