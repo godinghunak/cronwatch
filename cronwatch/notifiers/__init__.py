@@ -1,67 +1,48 @@
-"""cronwatch notifiers package.
+"""cronwatch notifier registry.
 
-Import helpers so callers can do::
-
-    from cronwatch.notifiers import LogNotifier, WebhookNotifier, ...
+All built-in notifiers are importable from this package.  Each notifier is
+loaded lazily so that missing optional dependencies (e.g. boto3) do not break
+imports of unrelated notifiers.
 """
-from cronwatch.notifiers.base import AlertPayload, BaseNotifier
-from cronwatch.notifiers.log_notifier import LogNotifier
-from cronwatch.notifiers.webhook_notifier import WebhookNotifier
-from cronwatch.notifiers.email_notifier import EmailConfig, EmailNotifier
-from cronwatch.notifiers.slack_notifier import SlackConfig, SlackNotifier
-from cronwatch.notifiers.pagerduty_notifier import PagerDutyConfig, PagerDutyNotifier
-from cronwatch.notifiers.opsgenie_notifier import OpsGenieConfig, OpsGenieNotifier
-from cronwatch.notifiers.victorops_notifier import VictorOpsConfig, VictorOpsNotifier
-from cronwatch.notifiers.sns_notifier import SNSConfig, SNSNotifier
-from cronwatch.notifiers.teams_notifier import TeamsConfig, TeamsNotifier
-from cronwatch.notifiers.discord_notifier import DiscordConfig, DiscordNotifier
-from cronwatch.notifiers.telegram_notifier import TelegramConfig, TelegramNotifier
-from cronwatch.notifiers.datadog_notifier import DatadogConfig, DatadogNotifier
-from cronwatch.notifiers.grafana_notifier import GrafanaConfig, GrafanaNotifier
-from cronwatch.notifiers.mattermost_notifier import MattermostConfig, MattermostNotifier
-from cronwatch.notifiers.googlechat_notifier import GoogleChatConfig, GoogleChatNotifier
-from cronwatch.notifiers.sms_notifier import SMSConfig, SMSNotifier
-from cronwatch.notifiers.splunk_notifier import SplunkConfig, SplunkNotifier
-from cronwatch.notifiers.pushover_notifier import PushoverConfig, PushoverNotifier
-from cronwatch.notifiers.zulip_notifier import ZulipConfig, ZulipNotifier
 
-__all__ = [
-    "AlertPayload",
-    "BaseNotifier",
-    "LogNotifier",
-    "WebhookNotifier",
-    "EmailConfig",
-    "EmailNotifier",
-    "SlackConfig",
-    "SlackNotifier",
-    "PagerDutyConfig",
-    "PagerDutyNotifier",
-    "OpsGenieConfig",
-    "OpsGenieNotifier",
-    "VictorOpsConfig",
-    "VictorOpsNotifier",
-    "SNSConfig",
-    "SNSNotifier",
-    "TeamsConfig",
-    "TeamsNotifier",
-    "DiscordConfig",
-    "DiscordNotifier",
-    "TelegramConfig",
-    "TelegramNotifier",
-    "DatadogConfig",
-    "DatadogNotifier",
-    "GrafanaConfig",
-    "GrafanaNotifier",
-    "MattermostConfig",
-    "MattermostNotifier",
-    "GoogleChatConfig",
-    "GoogleChatNotifier",
-    "SMSConfig",
-    "SMSNotifier",
-    "SplunkConfig",
-    "SplunkNotifier",
-    "PushoverConfig",
-    "PushoverNotifier",
-    "ZulipConfig",
-    "ZulipNotifier",
-]
+from __future__ import annotations
+
+from importlib import import_module
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from cronwatch.notifiers.base import BaseNotifier
+
+_NOTIFIER_MAP: dict[str, tuple[str, str]] = {
+    "LogNotifier": (".log_notifier", "LogNotifier"),
+    "WebhookNotifier": (".webhook_notifier", "WebhookNotifier"),
+    "EmailNotifier": (".email_notifier", "EmailNotifier"),
+    "SlackNotifier": (".slack_notifier", "SlackNotifier"),
+    "PagerDutyNotifier": (".pagerduty_notifier", "PagerDutyNotifier"),
+    "OpsGenieNotifier": (".opsgenie_notifier", "OpsGenieNotifier"),
+    "VictorOpsNotifier": (".victorops_notifier", "VictorOpsNotifier"),
+    "SNSNotifier": (".sns_notifier", "SNSNotifier"),
+    "TeamsNotifier": (".teams_notifier", "TeamsNotifier"),
+    "DiscordNotifier": (".discord_notifier", "DiscordNotifier"),
+    "TelegramNotifier": (".telegram_notifier", "TelegramNotifier"),
+    "DatadogNotifier": (".datadog_notifier", "DatadogNotifier"),
+    "GrafanaNotifier": (".grafana_notifier", "GrafanaNotifier"),
+    "MattermostNotifier": (".mattermost_notifier", "MattermostNotifier"),
+    "GoogleChatNotifier": (".googlechat_notifier", "GoogleChatNotifier"),
+    "SMSNotifier": (".sms_notifier", "SMSNotifier"),
+    "SplunkNotifier": (".splunk_notifier", "SplunkNotifier"),
+    "PushoverNotifier": (".pushover_notifier", "PushoverNotifier"),
+    "ZulipNotifier": (".zulip_notifier", "ZulipNotifier"),
+    "RocketChatNotifier": (".rocketchat_notifier", "RocketChatNotifier"),
+}
+
+
+def __getattr__(name: str) -> type[BaseNotifier]:
+    if name in _NOTIFIER_MAP:
+        module_path, class_name = _NOTIFIER_MAP[name]
+        module = import_module(module_path, package=__name__)
+        return getattr(module, class_name)  # type: ignore[return-value]
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
+__all__ = list(_NOTIFIER_MAP.keys())
