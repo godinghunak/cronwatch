@@ -1,67 +1,59 @@
-"""VictorOps (Splunk On-Call) notifier for cronwatch alerts."""
-
 from __future__ import annotations
 
+import urllib.request
+import urllib.error
+import json
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Dict
-
-import requests
+from typing import Optional
 
 from cronwatch.notifiers.base import AlertPayload, BaseNotifier
 
 logger = logging.getLogger(__name__)
 
-_DEFAULT_TIMEOUT = 10
-_MESSAGE_TYPE_CRITICAL = "CRITICAL"
-_MESSAGE_TYPE_INFO = "INFO"
-
 
 @dataclass
 class VictorOpsConfig:
-    """Configuration for the VictorOps notifier."""
-
     routing_key: str
-    rest_endpoint: str  # e.g. https://alert.victorops.com/integrations/generic/…/alert
-    timeout: int = _DEFAULT_TIMEOUT
-    extra_fields: Dict[str, Any] = field(default_factory=dict)
+    rest_endpoint_url: str  # e.g. https://alert.victorops.com/integrations/generic/…/alert/<api_key>
+    message_type: str = "CRITICAL"
+    timeout: int = 10
 
 
 class VictorOpsNotifier(BaseNotifier):
-    """Send alerts to VictorOps via the REST endpoint API."""
-
     def __init__(self, config: VictorOpsConfig) -> None:
-        self._config = config
+        self.config = config
 
     def send(self, payload: AlertPayload) -> None:
-        url = f"{self._config.rest_endpoint.rstrip('/')}/{self._config.routing_key}"
-        body = self._build_event(payload)
+        event = self._build_event(payload)
+        url = f"{self.config.rest_endpoint_url.rstrip('/')}/{self.config.routing_key}"
+        data = json.dumps(event).encode()
+        req = urllib.request.Request(
+            url,
+            data=data,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
         try:
-            response = requests.post(
-                url,
-                json=body,
-                timeout=self._config.timeout,
-            )
-            response.raise_for_status()
-            logger.info(
-                "VictorOps alert sent for job '%s' (status %s)",
-                payload.job_name,
-                response.status_code,
-            )
-        except requests.RequestException as exc:
-            logger.error("VictorOps notification failed: %s", exc)
+            with urllib.request.urlopen(req, timeout=self.config.timeout) as resp:
+                status = resp.status
+                logger.info("VictorOps alert sent for job '%s', status=%s", payload.job_name, status)
+        except urllib.error.HTTPError as exc:
+            logger.error("VictorOps HTTP error for job '%s': %s", payload.job_name, exc)
+        except urllib.error.URLError as exc:
+            logger.error("VictorOps URL error for job '%s': %s", payload.job_name, exc)
 
-    def _build_event(self, payload: AlertPayload) -> Dict[str, Any]:
-        event: Dict[str, Any] = {
-            "message_type": _MESSAGE_TYPE_CRITICAL,
+    def _build_event(self, payload: AlertPayload) -> dict:
+        return {
+            "message_type": self.config.message_type,
             "entity_id": f"cronwatch/{payload.job_name}",
             "entity_display_name": f"cronwatch: {payload.job_name}",
             "state_message": payload.summary(),
             "monitoring_tool": "cronwatch",
-            "job_name": payload.job_name,
-            "reason": payload.reason,
+            "timestamp": int(payload.triggered_at.timestamp()),
+            "details": {
+                "reason": payload.reason,
+                "last_seen": payload.last_seen.isoformat() if payload.last_seen else None,
+                "consecutive_failures": payload.consecutive_failures,
+            },
         }
-        if payload.last_seen is not None:
-            event["last_seen"] = payload.last_seen.isoformat()
-        event.update(self._config.extra_fields)
-        return event

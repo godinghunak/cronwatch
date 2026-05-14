@@ -1,107 +1,102 @@
-"""Tests for VictorOpsNotifier."""
-
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
+from io import BytesIO
 from unittest.mock import MagicMock, patch
 
 import pytest
-import requests
 
 from cronwatch.notifiers.base import AlertPayload
 from cronwatch.notifiers.victorops_notifier import VictorOpsConfig, VictorOpsNotifier
 
 
-def _utc(*args: int) -> datetime:
+def _utc(*args) -> datetime:
     return datetime(*args, tzinfo=timezone.utc)
 
 
-@pytest.fixture()
+@pytest.fixture
 def config() -> VictorOpsConfig:
     return VictorOpsConfig(
         routing_key="db-team",
-        rest_endpoint="https://alert.victorops.com/integrations/generic/12345/alert",
+        rest_endpoint_url="https://alert.victorops.com/integrations/generic/abc123/alert/secret",
     )
 
 
-@pytest.fixture()
+@pytest.fixture
 def payload() -> AlertPayload:
     return AlertPayload(
-        job_name="nightly-backup",
+        job_name="nightly_backup",
         reason="missed schedule",
-        last_seen=_utc(2024, 1, 15, 3, 0, 0),
+        triggered_at=_utc(2024, 1, 15, 3, 0, 0),
+        last_seen=_utc(2024, 1, 14, 3, 0, 0),
+        consecutive_failures=0,
     )
 
 
-def _mock_response(status_code: int = 200) -> MagicMock:
+def _mock_response(status: int = 200) -> MagicMock:
     resp = MagicMock()
-    resp.status_code = status_code
-    resp.raise_for_status = MagicMock()
-    if status_code >= 400:
-        resp.raise_for_status.side_effect = requests.HTTPError(response=resp)
+    resp.status = status
+    resp.__enter__ = lambda s: s
+    resp.__exit__ = MagicMock(return_value=False)
     return resp
 
 
-def test_send_posts_to_correct_url(config: VictorOpsConfig, payload: AlertPayload) -> None:
-    with patch("cronwatch.notifiers.victorops_notifier.requests.post") as mock_post:
-        mock_post.return_value = _mock_response(200)
+def test_send_posts_to_correct_url(config, payload):
+    with patch("urllib.request.urlopen", return_value=_mock_response()) as mock_open:
         notifier = VictorOpsNotifier(config)
         notifier.send(payload)
-
-    mock_post.assert_called_once()
-    url = mock_post.call_args[0][0]
-    assert "db-team" in url
-    assert "alert.victorops.com" in url
-
-
-def test_send_includes_job_name_in_body(config: VictorOpsConfig, payload: AlertPayload) -> None:
-    with patch("cronwatch.notifiers.victorops_notifier.requests.post") as mock_post:
-        mock_post.return_value = _mock_response(200)
-        VictorOpsNotifier(config).send(payload)
-
-    body = mock_post.call_args[1]["json"]
-    assert body["job_name"] == "nightly-backup"
-    assert body["message_type"] == "CRITICAL"
-    assert "nightly-backup" in body["entity_id"]
+        mock_open.assert_called_once()
+        req = mock_open.call_args[0][0]
+        assert "db-team" in req.full_url
+        assert "secret" in req.full_url
 
 
-def test_send_includes_last_seen_when_present(config: VictorOpsConfig, payload: AlertPayload) -> None:
-    with patch("cronwatch.notifiers.victorops_notifier.requests.post") as mock_post:
-        mock_post.return_value = _mock_response(200)
-        VictorOpsNotifier(config).send(payload)
-
-    body = mock_post.call_args[1]["json"]
-    assert "last_seen" in body
-    assert "2024-01-15" in body["last_seen"]
+def test_send_includes_job_name_in_entity_id(config, payload):
+    with patch("urllib.request.urlopen", return_value=_mock_response()):
+        notifier = VictorOpsNotifier(config)
+        event = notifier._build_event(payload)
+        assert "nightly_backup" in event["entity_id"]
 
 
-def test_send_omits_last_seen_when_none(config: VictorOpsConfig) -> None:
-    p = AlertPayload(job_name="job", reason="never ran", last_seen=None)
-    with patch("cronwatch.notifiers.victorops_notifier.requests.post") as mock_post:
-        mock_post.return_value = _mock_response(200)
-        VictorOpsNotifier(config).send(p)
-
-    body = mock_post.call_args[1]["json"]
-    assert "last_seen" not in body
-
-
-def test_extra_fields_merged_into_body(payload: AlertPayload) -> None:
+def test_send_uses_configured_message_type(payload):
     cfg = VictorOpsConfig(
         routing_key="ops",
-        rest_endpoint="https://alert.victorops.com/integrations/generic/99/alert",
-        extra_fields={"team": "platform", "env": "prod"},
+        rest_endpoint_url="https://alert.victorops.com/integrations/generic/x/alert/y",
+        message_type="WARNING",
     )
-    with patch("cronwatch.notifiers.victorops_notifier.requests.post") as mock_post:
-        mock_post.return_value = _mock_response(200)
-        VictorOpsNotifier(cfg).send(payload)
-
-    body = mock_post.call_args[1]["json"]
-    assert body["team"] == "platform"
-    assert body["env"] == "prod"
+    notifier = VictorOpsNotifier(cfg)
+    event = notifier._build_event(payload)
+    assert event["message_type"] == "WARNING"
 
 
-def test_request_exception_is_logged_not_raised(config: VictorOpsConfig, payload: AlertPayload) -> None:
-    with patch("cronwatch.notifiers.victorops_notifier.requests.post") as mock_post:
-        mock_post.side_effect = requests.ConnectionError("unreachable")
+def test_send_logs_on_http_error(config, payload, caplog):
+    import urllib.error
+
+    with patch("urllib.request.urlopen", side_effect=urllib.error.HTTPError(
+        url=None, code=500, msg="Server Error", hdrs=None, fp=None
+    )):
         notifier = VictorOpsNotifier(config)
-        notifier.send(payload)  # must not raise
+        with caplog.at_level("ERROR"):
+            notifier.send(payload)  # should not raise
+        assert "VictorOps HTTP error" in caplog.text
+
+
+def test_build_event_last_seen_none(config):
+    p = AlertPayload(
+        job_name="job_x",
+        reason="never ran",
+        triggered_at=_utc(2024, 1, 15, 0, 0, 0),
+        last_seen=None,
+        consecutive_failures=0,
+    )
+    notifier = VictorOpsNotifier(config)
+    event = notifier._build_event(p)
+    assert event["details"]["last_seen"] is None
+
+
+def test_build_event_consecutive_failures(config, payload):
+    payload.consecutive_failures = 5
+    notifier = VictorOpsNotifier(config)
+    event = notifier._build_event(payload)
+    assert event["details"]["consecutive_failures"] == 5
