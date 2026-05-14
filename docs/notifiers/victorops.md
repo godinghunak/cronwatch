@@ -45,3 +45,19 @@ Each alert includes:
 - **`monitoring_tool`** — Always `"cronwatch"`
 - **`timestamp`** — Unix epoch of when the alert was triggered
 - **`details`** — `reason`, `last_seen`, and `consecutive_failures`
+
+## Recovery Alerts
+
+To resolve an incident in VictorOps after a job recovers, send a follow-up
+alert with `message_type` set to `"RECOVERY"`. The `entity_id` must match the
+original alert so VictorOps can correlate and close the incident automatically.
+
+```python
+recovery_config = VictorOpsConfig(
+    rest_endpoint_url="https://alert.victorops.com/integrations/generic/<api_id>/alert/<api_key>",
+    routing_key="database-team",
+    message_type="RECOVERY",
+)
+
+recovery_notifier = VictorOpsNotifier(recovery_config)
+```
