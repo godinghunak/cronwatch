@@ -44,6 +44,13 @@ class OpsGenieNotifier(BaseNotifier):
             )
             resp.raise_for_status()
             logger.info("OpsGenie alert sent for job '%s'", payload.job_name)
+        except requests.HTTPError as exc:
+            logger.error(
+                "OpsGenie notification failed for job '%s': HTTP %s - %s",
+                payload.job_name,
+                exc.response.status_code if exc.response is not None else "unknown",
+                exc.response.text if exc.response is not None else exc,
+            )
         except requests.RequestException as exc:
             logger.error("OpsGenie notification failed for job '%s': %s", payload.job_name, exc)
 
