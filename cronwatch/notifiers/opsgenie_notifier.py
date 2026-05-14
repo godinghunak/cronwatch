@@ -69,3 +69,34 @@ class OpsGenieNotifier(BaseNotifier):
                 "exit_code": str(payload.exit_code) if payload.exit_code is not None else "n/a",
             },
         }
+
+    def close_alert(self, job_name: str) -> None:
+        """Close (resolve) an existing OpsGenie alert by its alias.
+
+        This is useful after a previously failing job recovers successfully,
+        allowing cronwatch to auto-resolve the open incident.
+        """
+        alias = f"cronwatch-{job_name}"
+        url = f"{OPSGENIE_ALERT_URL}/{alias}/close"
+        headers = {
+            "Authorization": f"GenieKey {self.config.api_key}",
+            "Content-Type": "application/json",
+        }
+        try:
+            resp = requests.post(
+                url,
+                json={"note": "Resolved automatically by cronwatch."},
+                headers=headers,
+                timeout=self.config.timeout,
+            )
+            resp.raise_for_status()
+            logger.info("OpsGenie alert closed for job '%s'", job_name)
+        except requests.HTTPError as exc:
+            logger.error(
+                "OpsGenie close alert failed for job '%s': HTTP %s - %s",
+                job_name,
+                exc.response.status_code if exc.response is not None else "unknown",
+                exc.response.text if exc.response is not None else exc,
+            )
+        except requests.RequestException as exc:
+            logger.error("OpsGenie close alert failed for job '%s': %s", job_name, exc)
