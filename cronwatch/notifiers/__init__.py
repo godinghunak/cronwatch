@@ -1,10 +1,9 @@
-"""Notifier registry for cronwatch.
+"""cronwatch notifiers package.
 
 Import helpers so callers can do::
 
-    from cronwatch.notifiers import LogNotifier, WebhookNotifier
+    from cronwatch.notifiers import LogNotifier, WebhookNotifier, ...
 """
-
 from cronwatch.notifiers.base import AlertPayload, BaseNotifier
 from cronwatch.notifiers.log_notifier import LogNotifier
 from cronwatch.notifiers.webhook_notifier import WebhookNotifier
@@ -23,25 +22,46 @@ from cronwatch.notifiers.mattermost_notifier import MattermostConfig, Mattermost
 from cronwatch.notifiers.googlechat_notifier import GoogleChatConfig, GoogleChatNotifier
 from cronwatch.notifiers.sms_notifier import SMSConfig, SMSNotifier
 from cronwatch.notifiers.splunk_notifier import SplunkConfig, SplunkNotifier
+from cronwatch.notifiers.pushover_notifier import PushoverConfig, PushoverNotifier
+from cronwatch.notifiers.zulip_notifier import ZulipConfig, ZulipNotifier
 
 __all__ = [
     "AlertPayload",
     "BaseNotifier",
     "LogNotifier",
     "WebhookNotifier",
-    "EmailConfig", "EmailNotifier",
-    "SlackConfig", "SlackNotifier",
-    "PagerDutyConfig", "PagerDutyNotifier",
-    "OpsGenieConfig", "OpsGenieNotifier",
-    "VictorOpsConfig", "VictorOpsNotifier",
-    "SNSConfig", "SNSNotifier",
-    "TeamsConfig", "TeamsNotifier",
-    "DiscordConfig", "DiscordNotifier",
-    "TelegramConfig", "TelegramNotifier",
-    "DatadogConfig", "DatadogNotifier",
-    "GrafanaConfig", "GrafanaNotifier",
-    "MattermostConfig", "MattermostNotifier",
-    "GoogleChatConfig", "GoogleChatNotifier",
-    "SMSConfig", "SMSNotifier",
-    "SplunkConfig", "SplunkNotifier",
+    "EmailConfig",
+    "EmailNotifier",
+    "SlackConfig",
+    "SlackNotifier",
+    "PagerDutyConfig",
+    "PagerDutyNotifier",
+    "OpsGenieConfig",
+    "OpsGenieNotifier",
+    "VictorOpsConfig",
+    "VictorOpsNotifier",
+    "SNSConfig",
+    "SNSNotifier",
+    "TeamsConfig",
+    "TeamsNotifier",
+    "DiscordConfig",
+    "DiscordNotifier",
+    "TelegramConfig",
+    "TelegramNotifier",
+    "DatadogConfig",
+    "DatadogNotifier",
+    "GrafanaConfig",
+    "GrafanaNotifier",
+    "MattermostConfig",
+    "MattermostNotifier",
+    "GoogleChatConfig",
+    "GoogleChatNotifier",
+    "SMSConfig",
+    "SMSNotifier",
+    "SplunkConfig",
+    "SplunkNotifier",
+    "PushoverConfig",
+    "PushoverNotifier",
+    "ZulipConfig",
+    "ZulipNotifier",
 ]
